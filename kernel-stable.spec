@@ -624,7 +624,7 @@ if [ -x %{_sbindir}/weak-modules ]; then
 fi
 
 %post
-%{_sbindir}/new-kernel-pkg --package %{name} --install %{version}-%{release}.%{_target_cpu} || exit $?
+%{_sbindir}/new-kernel-pkg --package %{name} --make-default --install %{version}-%{release}.%{_target_cpu} || exit $?
 
 %preun
 %{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{version}-%{release}.%{_target_cpu} || exit $?
