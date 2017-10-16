@@ -154,9 +154,6 @@ Source3: config-%{version}-x86_64
 Source4: cpupower.service
 Source5: cpupower.config
 
-# Do not package the source tarball.
-NoSource: 0
-
 %description
 This package provides the Linux kernel (vmlinuz), the core of any
 Linux-based operating system. The kernel handles the basic functions
