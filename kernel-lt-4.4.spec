@@ -1,7 +1,7 @@
 %global __spec_install_pre %{___build_pre}
 
 # Define the version of the Linux Kernel Archive tarball.
-%define LKAver 4.13.7
+%define LKAver 4.4.92
 
 # Define the buildid, if required.
 #define buildid .
@@ -10,14 +10,17 @@
 # Use either --without <option> on your rpmbuild command line
 # or force the values to 0, here, to disable them.
 
-# kernel-ml
+# kernel-lt
 %define with_default %{?_without_default: 0} %{?!_without_default: 1}
-# kernel-ml-doc
+# kernel-lt-doc
 %define with_doc     %{?_without_doc:     0} %{?!_without_doc:     1}
-# kernel-ml-headers
+# kernel-lt-headers
 %define with_headers %{?_without_headers: 0} %{?!_without_headers: 1}
 # perf
 %define with_perf    %{?_without_perf:    0} %{?!_without_perf:    1}
+######################
+%define with_perf    0
+######################
 # tools
 %define with_tools   %{?_without_tools:   0} %{?!_without_tools:   1}
 
@@ -40,14 +43,14 @@
 %endif
 
 %ifarch i686
-# 32-bit kernel-ml, headers, perf & tools.
+# 32-bit kernel-lt, headers, perf & tools.
 %define buildarch i386
 %define hdrarch i386
 %define with_doc 0
 %endif
 
 %ifarch x86_64
-# 64-bit kernel-ml, headers, perf & tools.
+# 64-bit kernel-lt, headers, perf & tools.
 %define with_doc 0
 %endif
 
@@ -90,7 +93,7 @@
 %define kernel_prereq fileutils, module-init-tools >= 3.16-2, initscripts >= 8.11.1-1, grubby >= 8.28-2
 %define initrd_prereq dracut >= 001-7
 
-Name: kernel-ml
+Name: kernel-lt
 Summary: The Linux kernel. (The core of any Linux-based operating system.)
 Group: System Environment/Kernel
 License: GPLv2
@@ -123,25 +126,24 @@ Conflicts: %{kernel_dot_org_conflicts}
 Conflicts: %{package_conflicts}
 # We can't let RPM do the dependencies automatically because it'll then pick up
 # a correct but undesirable perl dependency from the module headers which
-# isn't required for the kernel-ml proper to function.
+# isn't required for the kernel-lt proper to function.
 AutoReq: no
 AutoProv: yes
 
 #
-# List the packages used during the kernel-ml build.
+# List the packages used during the kernel-lt build.
 #
-BuildRequires: asciidoc, bash >= 2.03, bc, binutils >= 2.12, diffutils
-BuildRequires: findutils, gawk, gcc >= 3.4.2 gzip, hostname, m4
-BuildRequires: make >= 3.78, module-init-tools, net-tools, newt-devel
-BuildRequires: openssl, openssl-devel, patch >= 2.5.4, perl
+BuildRequires: asciidoc, bash >= 2.03, bc, binutils >= 2.12, diffutils, findutils
+BuildRequires: gawk, gcc >= 3.4.2, gzip, hostname, m4, make >= 3.78, module-init-tools
+BuildRequires: net-tools, openssl, openssl-devel, patch >= 2.5.4, perl
 BuildRequires: redhat-rpm-config >= 9.1.0-55, sh-utils, tar, xmlto, xz
 %if %{with_perf}
-BuildRequires: audit-libs-devel, binutils-devel, bison, elfutils-devel
-BuildRequires: java-1.8.0-openjdk-devel, numactl-devel, perl(ExtUtils::Embed)
-BuildRequires: python-devel, slang-devel, xz-devel, zlib-devel
+BuildRequires: audit-libs-devel, binutils-devel, bison, elfutils-devel, java-1.8.0-openjdk-devel
+BuildRequires: newt-devel, numactl-devel, perl(ExtUtils::Embed), python-devel
+BuildRequires: slang-devel, xz-devel, zlib-devel
 %endif
 %if %{with_tools}
-BuildRequires: gettext, ncurses-devel, pciutils-devel
+BuildRequires: gettext, ncurses-devel, pciutils, pciutils-devel, zlib-devel
 %endif
 
 # Sources.
@@ -499,6 +501,15 @@ pushd linux-%{version}-%{release}.%{_target_cpu} > /dev/null
 BuildKernel
 %endif
 
+%if %{with_doc}
+# Make the HTML and man pages.
+%{__make} -s %{?_smp_mflags} htmldocs 2> /dev/null
+%{__make} -s %{?_smp_mflags} mandocs 2> /dev/null
+
+# Sometimes non-world-readable files sneak into the kernel source tree.
+%{__chmod} -Rf a+rX,u+w,g-w,o-w Documentation
+%endif
+
 %if %{with_perf}
 %global perf_make \
     %{__make} -s -C tools/perf %{?_smp_mflags} prefix=%{_prefix} lib=%{_lib} WERROR=0 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_LIBUNWIND=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 NO_STRLCPY=1
@@ -559,13 +570,19 @@ fi
 
 %if %{with_doc}
 DOCDIR=$RPM_BUILD_ROOT%{_datadir}/doc/%{name}-doc-%{version}
-
-# Sometimes non-world-readable files sneak into the kernel source tree.
-%{__chmod} -Rf a+rX,u+w,go-w Documentation
+MAN9DIR=$RPM_BUILD_ROOT%{_datadir}/man/man9
 
 # Copy the documentation over.
 %{__mkdir_p} $DOCDIR
 %{__tar} -f - --exclude=man --exclude='.*' -c Documentation | %{__tar} xf - -C $DOCDIR
+
+# Install the man pages for the kernel API.
+%{__mkdir_p} $MAN9DIR
+/usr/bin/find Documentation/DocBook/man -type f -name '*.9.gz' -print0 \
+    | xargs -0 --no-run-if-empty %{__cp} -u -t $MAN9DIR
+/usr/bin/find $MAN9DIR -type f -name '*.9.gz' -print0 \
+    | xargs -0 --no-run-if-empty %{__chmod} 644
+ls $MAN9DIR | grep -q '' || > $MAN9DIR/BROKEN
 %endif
 
 %if %{with_perf}
@@ -701,6 +718,7 @@ fi
 %{_datadir}/doc/%{name}-doc-%{version}/Documentation/*
 %dir %{_datadir}/doc/%{name}-doc-%{version}/Documentation
 %dir %{_datadir}/doc/%{name}-doc-%{version}
+%{_datadir}/man/man9/*
 %endif
 
 %if %{with_perf}
@@ -708,7 +726,9 @@ fi
 %defattr(-,root,root)
 %{_bindir}/perf
 %{_bindir}/trace
-%{_libdir}/libperf-jvmti.so
+###########################
+#{_libdir}/libperf-jvmti.so
+###########################
 %dir %{_libdir}/traceevent/plugins
 %{_libdir}/traceevent/plugins/*
 %dir %{_libexecdir}/perf-core
@@ -717,8 +737,10 @@ fi
 %config(noreplace) %{_sysconfdir}/bash_completion.d/perf
 %dir %{_datadir}/perf-core/strace/groups
 %{_datadir}/perf-core/strace/groups/*
-%dir %{_datadir}/doc/perf-tip
-%{_datadir}/doc/perf-tip/*
+#############################
+#dir %{_datadir}/doc/perf-tip
+#{_datadir}/doc/perf-tip/*
+#############################
 %doc linux-%{version}-%{release}.%{_target_cpu}/tools/perf/Documentation/examples.txt
 
 %files -n python-perf
@@ -746,392 +768,433 @@ fi
 %files -n %{name}-tools-libs
 %defattr(-,root,root)
 %{_libdir}/libcpupower.so.0
+%{_libdir}/libcpupower.so.0.0.0
 ###############################
-#{_libdir}/libcpupower.so.0.0.0
+#{_libdir}/libcpupower.so.0.0.1
 ###############################
-%{_libdir}/libcpupower.so.0.0.1
 
 %files -n %{name}-tools-libs-devel
 %defattr(-,root,root)
 %{_libdir}/libcpupower.so
 %{_includedir}/cpufreq.h
-%{_includedir}/cpuidle.h
+########################
+#{_includedir}/cpuidle.h
+########################
 %endif
 %endif
 
 %changelog
-* Sat Oct 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.7-1
-- Updated with the 4.13.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.7]
+* Thu Oct 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.92-1
+- Updated with the 4.4.92 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.92]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Thu Oct 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.6-1
-- Updated with the 4.13.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.6]
+* Sun Oct 08 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.91-1
+- Updated with the 4.4.91 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.91]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Thu Oct 05 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.5-1
-- Updated with the 4.13.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.5]
+* Thu Oct 05 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.90-1
+- Updated with the 4.4.90 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.90]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Wed Sep 27 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.4-1
-- Updated with the 4.13.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.4]
+* Wed Sep 27 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.89-1
+- Updated with the 4.4.89 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.89]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Wed Sep 20 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.3-1
-- Updated with the 4.13.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.3]
+* Wed Sep 13 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.88-1
+- Updated with the 4.4.88 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.88]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Wed Sep 13 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.2-1
-- Updated with the 4.13.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.2]
+* Fri Sep 08 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.87-1
+- Updated with the 4.4.87 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.87]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Sun Sep 10 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.1-1
-- Updated with the 4.13.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.1]
+* Sat Sep 02 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.86-1
+- Updated with the 4.4.86 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.86]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Sun Sep 03 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.0-1
-- Updated with the 4.13 source tarball.
+* Wed Aug 30 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.85-1
+- Updated with the 4.4.85 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.85]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Wed Aug 30 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.10-1
-- Updated with the 4.12.10 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.10]
+* Fri Aug 25 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.84-1
+- Updated with the 4.4.84 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.84]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Fri Aug 25 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.9-1
-- Updated with the 4.12.9 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.9]
+* Thu Aug 17 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.83-1
+- Updated with the 4.4.83 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.83]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Thu Aug 17 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.8-1
-- Updated with the 4.12.8 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.8]
-
-* Mon Aug 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.7-1
-- Updated with the 4.12.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.7]
+* Mon Aug 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.82-1
+- Updated with the 4.4.82 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.82]
 - CONFIG_MOUSE_PS2_VMMOUSE=y [https://elrepo.org/bugs/view.php?id=767]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Fri Aug 11 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.6-1
-- Updated with the 4.12.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.6]
+* Fri Aug 11 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.81-1
+- Updated with the 4.4.81 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.81]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Sun Aug 06 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.5-1
-- Updated with the 4.12.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.5]
+* Mon Aug 07 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.80-1
+- Updated with the 4.4.80 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.80]
+- Build of perf subsystem has been disabled due to upstream
+- code errors.
 
-* Fri Jul 28 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.4-1
-- Updated with the 4.12.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.4]
+* Fri Jul 28 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.79-1
+- Updated with the 4.4.79 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.79]
 
-* Fri Jul 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.3-1
-- Updated with the 4.12.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.3]
+* Fri Jul 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.78-1
+- Updated with the 4.4.78 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.78]
 
-* Sat Jul 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.2-1
-- Updated with the 4.12.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.2]
+* Sat Jul 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.77-1
+- Updated with the 4.4.77 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.77]
 
-* Thu Jul 13 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.1-1
-- Updated with the 4.12.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.12.1]
+* Wed Jul 05 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.76-1
+- Updated with the 4.4.76 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.76]
 
-* Mon Jul 03 2017 Alan Bartlett <ajb@elrepo.org> - 4.12.0-1
-- Updated with the 4.12 source tarball.
+* Thu Jun 29 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.75-1
+- Updated with the 4.4.75 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.75]
 
-* Thu Jun 29 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.8-1
-- Updated with the 4.11.8 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.8]
+* Tue Jun 27 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.74-1
+- Updated with the 4.4.74 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.74]
 
-* Sat Jun 24 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.7-1
-- Updated with the 4.11.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.7]
+* Sat Jun 17 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.73-1
+- Updated with the 4.4.73 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.73]
 
-* Sat Jun 17 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.6-1
-- Updated with the 4.11.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.6]
+* Wed Jun 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.72-1
+- Updated with the 4.4.72 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.72]
 
-* Wed Jun 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.5-1
-- Updated with the 4.11.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.5]
-
-* Wed Jun 07 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.4-1
-- Updated with the 4.11.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.4]
+* Wed Jun 07 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.71-1
+- Updated with the 4.4.71 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.71]
 - CONFIG_HAMRADIO=y, CONFIG_AX25=m, CONFIG_AX25_DAMA_SLAVE=y,
 - CONFIG_NETROM=m, CONFIG_ROSE=m, CONFIG_MKISS=m,
 - CONFIG_6PACK=m, CONFIG_BPQETHER=m, CONFIG_BAYCOM_SER_FDX=m,
 - CONFIG_BAYCOM_SER_HDX=m, CONFIG_BAYCOM_PAR=m and CONFIG_YAM=m
 - [https://elrepo.org/bugs/view.php?id=745]
 
-* Fri May 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.3-1
-- Updated with the 4.11.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.3]
+* Fri May 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.70-1
+- Updated with the 4.4.70 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.70]
 
-* Sun May 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.2-1
-- Updated with the 4.11.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.2]
+* Sun May 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.69-1
+- Updated with the 4.4.69 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.69]
 
-* Sun May 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.1-1
-- Updated with the 4.11.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.11.1]
+* Sun May 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.68-1
+- Updated with the 4.4.68 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.68]
+
+* Mon May 08 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.67-1
+- Updated with the 4.4.67 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.67]
+
+* Thu May 04 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.66-1
+- Updated with the 4.4.66 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.66]
 - CONFIG_DETECT_HUNG_TASK=y, CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=120
 - and CONFIG_BOOTPARAM_HUNG_TASK_PANIC_VALUE=0
 - [https://elrepo.org/bugs/view.php?id=733]
 
-* Mon May 01 2017 Alan Bartlett <ajb@elrepo.org> - 4.11.0-1
-- Updated with the 4.11 source tarball.
+* Sun Apr 30 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.65-1
+- Updated with the 4.4.65 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.65]
 
-* Thu Apr 27 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.13-1
-- Updated with the 4.10.13 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.13]
-- CONFIG_MLX5_CORE_EN=y and CONFIG_MLX5_CORE_EN_DCB=y
-- [https://elrepo.org/bugs/view.php?id=730]
+* Thu Apr 27 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.64-1
+- Updated with the 4.4.64 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.64]
+- CONFIG_MLX5_CORE_EN=y [https://elrepo.org/bugs/view.php?id=730]
 
-* Fri Apr 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.12-1
-- Updated with the 4.10.12 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.12]
+* Fri Apr 21 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.63-1
+- Updated with the 4.4.63 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.63]
 
-* Tue Apr 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.11-1
-- Updated with the 4.10.11 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.11]
+* Tue Apr 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.62-1
+- Updated with the 4.4.62 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.62]
 - CONFIG_USERFAULTFD=y
 - [https://lists.elrepo.org/pipermail/elrepo/2017-April/003540.html]
 
-* Wed Apr 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.10-1
-- Updated with the 4.10.10 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.10]
+* Wed Apr 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.61-1
+- Updated with the 4.4.61 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.61]
 
-* Sat Apr 08 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.9-1
-- Updated with the 4.10.9 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.9]
+* Sat Apr 08 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.60-1
+- Updated with the 4.4.60 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.60]
 
-* Fri Mar 31 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.8-1
-- Updated with the 4.10.8 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.8]
+* Fri Mar 31 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.59-1
+- Updated with the 4.4.59 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.59]
 
-* Thu Mar 30 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.7-1
-- Updated with the 4.10.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.7]
+* Thu Mar 30 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.58-1
+- Updated with the 4.4.58 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.58]
 
-* Sun Mar 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.6-1
-- Updated with the 4.10.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.6]
+* Sun Mar 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.57-1
+- Updated with the 4.4.57 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.57]
 
-* Wed Mar 22 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.5-1
-- Updated with the 4.10.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.5]
+* Wed Mar 22 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.56-1
+- Updated with the 4.4.56 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.56]
 
-* Sat Mar 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.4-1
-- Updated with the 4.10.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.4]
+* Sat Mar 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.55-1
+- Updated with the 4.4.55 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.55]
 
-* Wed Mar 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.3-1
-- Updated with the 4.10.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.3]
+* Wed Mar 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.54-1
+- Updated with the 4.4.54 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.54]
 
-* Sun Mar 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.2-1
-- Updated with the 4.10.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.2]
+* Sun Mar 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.53-1
+- Updated with the 4.4.53 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.53]
 
-* Sun Feb 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.1-1
-- Updated with the 4.10.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.10.1]
+* Sun Feb 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.52-1
+- Updated with the 4.4.52 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.52]
 - Added NO_PERF_READ_VDSO32=1 and NO_PERF_READ_VDSOX32=1
 - directives to the %%global perf_make line.
 - [https://elrepo.org/bugs/view.php?id=719]
 
-* Sun Feb 19 2017 Alan Bartlett <ajb@elrepo.org> - 4.10.0-1
-- Updated with the 4.10 source tarball.
-- CONFIG_NVME_FC=m and CONFIG_NVME_TARGET_FC=m
-- [https://elrepo.org/bugs/view.php?id=705]
+* Thu Feb 23 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.51-1
+- Updated with the 4.4.51 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.51]
 
-* Sat Feb 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.11-1
-- Updated with the 4.9.11 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.11]
-- CONFIG_MODVERSIONS=y [https://elrepo.org/bugs/view.php?id=718]
+* Sat Feb 18 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.50-1
+- Updated with the 4.4.50 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.50]
 
-* Wed Feb 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.10-1
-- Updated with the 4.9.10 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.10]
-- CONFIG_CPU_FREQ_STAT=y and CONFIG_CPU_FREQ_STAT_DETAILS=y
-- [https://elrepo.org/bugs/view.php?id=717]
+* Wed Feb 15 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.49-1
+- Updated with the 4.4.49 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.49]
 
-* Thu Feb 09 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.9-1
-- Updated with the 4.9.9 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.9]
+* Thu Feb 09 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.48-1
+- Updated with the 4.4.48 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.48]
 
-* Sat Feb 04 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.8-1
-- Updated with the 4.9.8 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.8]
+* Sat Feb 04 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.47-1
+- Updated with the 4.4.47 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.47]
 
-* Wed Feb 01 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.7-1
-- Updated with the 4.9.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.7]
+* Wed Feb 01 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.46-1
+- Updated with the 4.4.46 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.46]
 
-* Thu Jan 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.6-1
-- Updated with the 4.9.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.6]
+* Thu Jan 26 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.45-1
+- Updated with the 4.4.45 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.45]
 - Remove any orphaned initramfs-xxxkdump.img file
 - found post kernel uninstall. [Akemi Yagi]
 
-* Fri Jan 20 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.5-1
-- Updated with the 4.9.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.5]
+* Fri Jan 20 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.44-1
+- Updated with the 4.4.44 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.44]
 
-* Mon Jan 16 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.4-1
-- Updated with the 4.9.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.4]
+* Mon Jan 16 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.43-1
+- Updated with the 4.4.43 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.43]
 
-* Fri Jan 13 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.3-1
-- Updated with the 4.9.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.3]
+* Thu Jan 12 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.42-1
+- Updated with the 4.4.42 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.42]
 
-* Tue Jan 10 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.2-1
-- Updated with the 4.9.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.2]
+* Tue Jan 10 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.41-1
+- Updated with the 4.4.41 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.41]
 - CONFIG_CAN=m, CONFIG_CAN_RAW=m, CONFIG_CAN_BCM=m, CONFIG_CAN_GW=m,
 - CONFIG_CAN_VCAN=m, CONFIG_CAN_SLCAN=m, CONFIG_CAN_DEV=m,
 - CONFIG_CAN_CALC_BITTIMING=y, CONFIG_CAN_LEDS=y, CONFIG_CAN_JANZ_ICAN3=m,
 - CONFIG_CAN_C_CAN=m, CONFIG_CAN_C_CAN_PLATFORM=m, CONFIG_CAN_C_CAN_PCI=m,
 - CONFIG_CAN_CC770=m, CONFIG_CAN_CC770_ISA=m, CONFIG_CAN_CC770_PLATFORM=m,
-- CONFIG_CAN_IFI_CANFD=m, CONFIG_CAN_M_CAN=m, CONFIG_CAN_SJA1000=m,
-- CONFIG_CAN_SJA1000_ISA=m, CONFIG_CAN_SJA1000_PLATFORM=m,
-- CONFIG_CAN_EMS_PCMCIA=m, CONFIG_CAN_EMS_PCI=m, CONFIG_CAN_PEAK_PCMCIA=m,
-- CONFIG_CAN_PEAK_PCI=m, CONFIG_CAN_PEAK_PCIEC=y, CONFIG_CAN_KVASER_PCI=m,
-- CONFIG_CAN_PLX_PCI=m, CONFIG_CAN_SOFTING=m, CONFIG_CAN_SOFTING_CS=m,
-- CONFIG_CAN_MCP251X=m, CONFIG_CAN_EMS_USB=m, CONFIG_CAN_ESD_USB2=m,
-- CONFIG_CAN_GS_USB=m, CONFIG_CAN_KVASER_USB=m, CONFIG_CAN_PEAK_USB=m
-- and CONFIG_CAN_8DEV_USB=m [https://elrepo.org/bugs/view.php?id=707]
+- CONFIG_CAN_M_CAN=m, CONFIG_CAN_SJA1000=m, CONFIG_CAN_SJA1000_ISA=m,
+- CONFIG_CAN_SJA1000_PLATFORM=m, CONFIG_CAN_EMS_PCMCIA=m,
+- CONFIG_CAN_EMS_PCI=m, CONFIG_CAN_PEAK_PCMCIA=m, CONFIG_CAN_PEAK_PCI=m,
+- CONFIG_CAN_PEAK_PCIEC=y, CONFIG_CAN_KVASER_PCI=m, CONFIG_CAN_PLX_PCI=m,
+- CONFIG_CAN_SOFTING=m, CONFIG_CAN_SOFTING_CS=m, CONFIG_CAN_MCP251X=m,
+- CONFIG_CAN_EMS_USB=m, CONFIG_CAN_ESD_USB2=m, CONFIG_CAN_GS_USB=m,
+- CONFIG_CAN_KVASER_USB=m, CONFIG_CAN_PEAK_USB=m and CONFIG_CAN_8DEV_USB=m
+- [https://elrepo.org/bugs/view.php?id=707]
 
-* Fri Jan 06 2017 Alan Bartlett <ajb@elrepo.org> - 4.9.1-1
-- Updated with the 4.9.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.1]
-- CONFIG_NVME_CORE=m, CONFIG_NVME_FABRICS=m, CONFIG_NVME_RDMA=m,
-- CONFIG_NVME_TARGET=m, CONFIG_NVME_TARGET_LOOP=m and
-- CONFIG_NVME_TARGET_RDMA=m [https://elrepo.org/bugs/view.php?id=705]
+* Fri Jan 06 2017 Alan Bartlett <ajb@elrepo.org> - 4.4.40-1
+- Updated with the 4.4.40 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.40]
 
-* Mon Dec 12 2016 Alan Bartlett <ajb@elrepo.org> - 4.9.0-1
-- Updated with the 4.9 source tarball.
+* Thu Dec 15 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.39-1
+- Updated with the 4.4.39 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.39]
 
-* Fri Dec 09 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.13-1
-- Updated with the 4.8.13 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.13]
+* Sat Dec 10 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.38-1
+- Updated with the 4.4.38 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.38]
 
-* Fri Dec 02 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.12-1
-- Updated with the 4.8.12 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.12]
+* Fri Dec 09 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.37-1
+- Updated with the 4.4.37 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.37]
 
-* Sat Nov 26 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.11-1
-- Updated with the 4.8.11 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.11]
+* Fri Dec 02 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.36-1
+- Updated with the 4.4.36 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.36]
 
-* Mon Nov 21 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.10-1
-- Updated with the 4.8.10 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.10]
+* Sat Nov 26 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.35-1
+- Updated with the 4.4.35 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.35]
 
-* Sat Nov 19 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.9-1
-- Updated with the 4.8.9 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.9]
+* Mon Nov 21 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.34-1
+- Updated with the 4.4.34 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.34]
+
+* Sat Nov 19 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.33-1
+- Updated with the 4.4.33 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.33]
 - CONFIG_BPF_SYSCALL=y and CONFIG_BPF_EVENTS=y
 - [https://elrepo.org/bugs/view.php?id=690]
 
-* Thu Nov 10 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.7-1
-- Updated with the 4.8.7 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.7]
-- CONFIG_ORANGEFS_FS=m [https://elrepo.org/bugs/view.php?id=677]
+* Tue Nov 15 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.32-1
+- Updated with the 4.4.32 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.32]
+
+* Thu Nov 10 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.31-1
+- Updated with the 4.4.31 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.31]
 - CONFIG_FMC=m, CONFIG_FMC_CHARDEV=m and CONFIG_FMC_WRITE_EEPROM=m
 - [https://elrepo.org/bugs/view.php?id=680]
 
-* Mon Oct 31 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.6-1
-- Updated with the 4.8.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.6]
+* Tue Nov 01 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.30-1
+- Updated with the 4.4.30 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.30]
 
-* Fri Oct 28 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.5-1
-- Updated with the 4.8.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.5]
+* Mon Oct 31 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.29-1
+- Updated with the 4.4.29 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.29]
 
-* Sat Oct 22 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.4-1
-- Updated with the 4.8.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.4]
+* Fri Oct 28 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.28-1
+- Updated with the 4.4.28 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.28]
 
-* Thu Oct 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.3-1
-- Updated with the 4.8.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.3]
+* Sat Oct 22 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.27-1
+- Updated with the 4.4.27 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.27]
 
-* Mon Oct 17 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.2-1
-- Updated with the 4.8.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.2]
+* Thu Oct 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.26-1
+- Updated with the 4.4.26 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.26]
 
-* Fri Oct 07 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.1-1
-- Updated with the 4.8.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.8.1]
+* Mon Oct 17 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.25-1
+- Updated with the 4.4.25 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.25]
 
-* Mon Oct 03 2016 Alan Bartlett <ajb@elrepo.org> - 4.8.0-1
-- Updated with the 4.8 source tarball.
+* Fri Oct 07 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.24-1
+- Updated with the 4.4.24 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.24]
 
-* Fri Sep 30 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.6-1
-- Updated with the 4.7.6 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.6]
+* Fri Sep 30 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.23-1
+- Updated with the 4.4.23 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.23]
 
-* Sat Sep 24 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.5-1
-- Updated with the 4.7.5 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.5]
+* Sat Sep 24 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.22-1
+- Updated with the 4.4.22 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.22]
 
-* Thu Sep 15 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.4-1
-- Updated with the 4.7.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.4]
+* Thu Sep 15 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.21-1
+- Updated with the 4.4.21 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.21]
 
-* Wed Sep 07 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.3-1
-- Updated with the 4.7.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.3]
+* Wed Sep 07 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.20-1
+- Updated with the 4.4.20 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.20]
 - Disabled CONFIG_FW_LOADER_USER_HELPER_FALLBACK
 - [https://elrepo.org/bugs/view.php?id=671]
 
-* Sat Aug 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.2-1
-- Updated with the 4.7.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.2]
+* Sat Aug 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.19-1
+- Updated with the 4.4.19 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.19]
 
-* Wed Aug 17 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.1-1
-- Updated with the 4.7.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.7.1]
+* Tue Aug 16 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.18-1
+- Updated with the 4.4.18 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.18]
 
-* Sun Jul 24 2016 Alan Bartlett <ajb@elrepo.org> - 4.7.0-1
-- Updated with the 4.7 source tarball.
+* Wed Aug 10 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.17-1
+- Updated with the 4.4.17 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.17]
 
-* Tue Jul 12 2016 Alan Bartlett <ajb@elrepo.org> - 4.6.4-1
-- Updated with the 4.6.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.6.4]
+* Wed Jul 27 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.16-1
+- Updated with the 4.4.16 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.16]
 
-* Sat Jun 25 2016 Alan Bartlett <ajb@elrepo.org> - 4.6.3-1
-- Updated with the 4.6.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.6.3]
+* Tue Jul 12 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.15-1
+- Updated with the 4.4.15 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.15]
 
-* Wed Jun 08 2016 Alan Bartlett <ajb@elrepo.org> - 4.6.2-1
-- Updated with the 4.6.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.6.2]
+* Sat Jun 25 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.14-1
+- Updated with the 4.4.14 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.14]
 
-* Thu Jun 02 2016 Alan Bartlett <ajb@elrepo.org> - 4.6.1-1
-- Updated with the 4.6.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.6.1]
+* Wed Jun 08 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.13-1
+- Updated with the 4.4.13 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.13]
 
-* Mon May 16 2016 Alan Bartlett <ajb@elrepo.org> - 4.6.0-1
-- Updated with the 4.6 source tarball.
+* Thu Jun 02 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.12-1
+- Updated with the 4.4.12 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.12]
 
-* Thu May 12 2016 Alan Bartlett <ajb@elrepo.org> - 4.5.4-1
-- Updated with the 4.5.4 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.5.4]
+* Thu May 19 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.11-1
+- Updated with the 4.4.11 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.11]
 
-* Thu May 05 2016 Alan Bartlett <ajb@elrepo.org> - 4.5.3-1
-- Updated with the 4.5.3 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.5.3]
+* Thu May 12 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.10-1
+- Updated with the 4.4.10 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.10]
 
-* Wed Apr 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.5.2-1
-- Updated with the 4.5.2 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.5.2]
+* Thu May 05 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.9-1
+- Updated with the 4.4.9 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.9]
 
-* Sat Apr 16 2016 Alan Bartlett <ajb@elrepo.org> - 4.5.1-1
-- Updated with the 4.5.1 source tarball.
-- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.5.1]
+* Wed Apr 20 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.8-1
+- Updated with the 4.4.8 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.8]
 
-* Mon Mar 14 2016 Alan Bartlett <ajb@elrepo.org> - 4.5.0-1
-- Updated with the 4.5 source tarball.
+* Sat Apr 16 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.7-1
+- Updated with the 4.4.7 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.7]
+
+* Mon Mar 21 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.6-1
+- Updated with the 4.4.6 source tarball.
+- [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.4.6]
+- Forked this specification file so as to create
+- a kernel-lt package set for EL7.
 
 * Thu Mar 10 2016 Alan Bartlett <ajb@elrepo.org> - 4.4.5-1
 - Updated with the 4.4.5 source tarball.
@@ -1370,12 +1433,12 @@ fi
 * Thu Aug 14 2014 Alan Bartlett <ajb@elrepo.org> - 3.16.1-1
 - Updated with the 3.16.1 source tarball.
 - [https://www.kernel.org/pub/linux/kernel/v3.x/ChangeLog-3.16.1]
-- CONFIG_ATH9K_DEBUGFS=y, CONFIG_ATH9K_HTC_DEBUGFS=y and
+- CONFIG_ATH9K_DEBUGFS=y, CONFIG_ATH9K_HTC_DEBUGFS=y &
 - CONFIG_ATH10K_DEBUGFS=y [https://elrepo.org/bugs/view.php?id=501]
 
 * Mon Aug 04 2014 Alan Bartlett <ajb@elrepo.org> - 3.16.0-1
 - Updated with the 3.16 source tarball.
-- CONFIG_XEN_PCIDEV_BACKEND=y and CONFIG_XEN_FBDEV_FRONTEND=m [Mark Pryor]
+- CONFIG_XEN_PCIDEV_BACKEND=y & CONFIG_XEN_FBDEV_FRONTEND=m [Mark Pryor]
 
 * Fri Aug 01 2014 Alan Bartlett <ajb@elrepo.org> - 3.15.8-1
 - Updated with the 3.15.8 source tarball.
@@ -1438,7 +1501,7 @@ fi
 - [https://www.kernel.org/pub/linux/kernel/v3.x/ChangeLog-3.14.5]
 - The fourth release candidate of a kernel-ml package set for EL7.
 - Added a "Conflicts:" line for the kernel-ml-tools,
-- kernel-ml-tools-libs and kernel-ml-tools-devel packages.
+- kernel-ml-tools-libs & kernel-ml-tools-devel packages.
 
 * Wed May 28 2014 Alan Bartlett <ajb@elrepo.org> - 3.14.4-0.rc3
 - [https://www.kernel.org/pub/linux/kernel/v3.x/ChangeLog-3.14.4]
@@ -1449,7 +1512,7 @@ fi
 * Sat May 24 2014 Alan Bartlett <ajb@elrepo.org> - 3.14.4-0.rc2
 - [https://www.kernel.org/pub/linux/kernel/v3.x/ChangeLog-3.14.4]
 - The second release candidate of a kernel-ml package set for EL7.
-- Add calls of weak-modules to the %%posttrans and %%preun scripts.
+- Add calls of weak-modules to the %%posttrans & %%preun scripts.
 
 * Tue May 20 2014 Alan Bartlett <ajb@elrepo.org> - 3.14.4-0.rc1
 - [https://www.kernel.org/pub/linux/kernel/v3.x/ChangeLog-3.14.4]
