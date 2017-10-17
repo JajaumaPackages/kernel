@@ -705,7 +705,6 @@ fi
 %defattr(-,root,root)
 %{_bindir}/perf
 %{_bindir}/trace
-%{_libdir}/libperf-jvmti.so
 %dir %{_libdir}/traceevent/plugins
 %{_libdir}/traceevent/plugins/*
 %dir %{_libexecdir}/perf-core
