@@ -1,7 +1,7 @@
 %global __spec_install_pre %{___build_pre}
 
 # Define the version of the Linux Kernel Archive tarball.
-%define LKAver 4.13.7
+%define LKAver 4.9.56
 
 # Define the buildid, if required.
 #define buildid .
@@ -10,11 +10,11 @@
 # Use either --without <option> on your rpmbuild command line
 # or force the values to 0, here, to disable them.
 
-# kernel-stable
+# kernel-longterm
 %define with_default %{?_without_default: 0} %{?!_without_default: 1}
-# kernel-stable-doc
+# kernel-longterm-doc
 %define with_doc     %{?_without_doc:     0} %{?!_without_doc:     1}
-# kernel-stable-headers
+# kernel-longterm-headers
 %define with_headers %{?_without_headers: 0} %{?!_without_headers: 1}
 # perf
 %define with_perf    %{?_without_perf:    0} %{?!_without_perf:    1}
@@ -40,14 +40,14 @@
 %endif
 
 %ifarch i686
-# 32-bit kernel-stable, headers, perf & tools.
+# 32-bit kernel-longterm, headers, perf & tools.
 %define buildarch i386
 %define hdrarch i386
 %define with_doc 0
 %endif
 
 %ifarch x86_64
-# 64-bit kernel-stable, headers, perf & tools.
+# 64-bit kernel-longterm, headers, perf & tools.
 %define with_doc 0
 %endif
 
@@ -90,7 +90,7 @@
 %define kernel_prereq fileutils, module-init-tools >= 3.16-2, initscripts >= 8.11.1-1, grubby >= 8.28-2
 %define initrd_prereq dracut >= 001-7
 
-Name: kernel-stable
+Name: kernel-longterm
 Summary: The Linux kernel. (The core of any Linux-based operating system.)
 Group: System Environment/Kernel
 License: GPLv2
@@ -123,12 +123,12 @@ Conflicts: %{kernel_dot_org_conflicts}
 Conflicts: %{package_conflicts}
 # We can't let RPM do the dependencies automatically because it'll then pick up
 # a correct but undesirable perl dependency from the module headers which
-# isn't required for the kernel-stable proper to function.
+# isn't required for the kernel-longterm proper to function.
 AutoReq: no
 AutoProv: yes
 
 #
-# List the packages used during the kernel-stable build.
+# List the packages used during the kernel-longterm build.
 #
 BuildRequires: asciidoc, bash >= 2.03, bc, binutils >= 2.12, diffutils
 BuildRequires: findutils, gawk, gcc >= 3.4.2 gzip, hostname, m4
