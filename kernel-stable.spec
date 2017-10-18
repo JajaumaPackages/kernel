@@ -1,7 +1,7 @@
 %global __spec_install_pre %{___build_pre}
 
 # Define the version of the Linux Kernel Archive tarball.
-%define LKAver 4.13.7
+%define LKAver 4.13.8
 
 # Define the buildid, if required.
 #define buildid .
@@ -757,6 +757,9 @@ fi
 %endif
 
 %changelog
+* Wed Oct 18 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.13.8-1
+- Update to latest upstream release
+
 * Sat Oct 14 2017 Alan Bartlett <ajb@elrepo.org> - 4.13.7-1
 - Updated with the 4.13.7 source tarball.
 - [https://www.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.13.7]
