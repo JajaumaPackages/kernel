@@ -1,7 +1,7 @@
 %global __spec_install_pre %{___build_pre}
 
 # Define the version of the Linux Kernel Archive tarball.
-%define LKAver 4.9.62
+%define LKAver 4.9.63
 
 # Define the buildid, if required.
 #define buildid .
@@ -756,6 +756,9 @@ fi
 %endif
 
 %changelog
+* Mon Nov 20 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.9.63-1
+- Update to latest upstream release
+
 * Thu Nov 16 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.9.62-1
 - Update to latest upstream release
 
